@@ -1,0 +1,31 @@
+# Data Processing
+pandas==2.0.3
+numpy==1.24.3
+pyarrow==13.0.0
+
+# Cloud & Storage
+boto3==1.29.7
+google-cloud-bigquery==3.11.4
+google-cloud-storage==2.10.0
+
+# API & Web
+requests==2.31.0
+streamlit==1.25.0
+plotly==5.15.0
+
+# ETL & Pipeline
+apache-airflow==2.7.0
+dbt-core==1.6.0
+dbt-bigquery==1.6.0
+
+# ML & Analytics
+scikit-learn==1.3.0
+great-expectations==0.17.12
+
+# Development
+pytest==7.4.0
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+#Databases
+psycopg==3.2.9

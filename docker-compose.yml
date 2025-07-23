@@ -1,0 +1,41 @@
+version: '3.8'
+services:
+  # MinIO - Your Data Lake
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"      # API port
+      - "9001:9001"      # Console port
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - crypto_network
+
+  # PostgreSQL - Metadata & Staging
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${POSTGRES_DBNAME}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d  # Auto-run SQL scripts
+    networks:
+      - crypto_network
+      
+  # Future applications: Add your Python app service
+
+volumes:
+  minio_data:
+  postgres_data:
+
+networks:
+  crypto_network:
+    driver: bridge
