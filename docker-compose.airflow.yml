@@ -1,0 +1,163 @@
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:2.8.1-python3.11
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+
+    AIRFLOW__CONN_AWS_DEFAULT: 'aws://${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}@?host=http://minio:9000'
+
+    COINGECKO_KEY: ${COINGECKO_KEY}
+    URL_AWS: ${URL_AWS}
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    POSTGRES_HOST: ${POSTGRES_HOST}
+    POSTGRES_DBNAME: ${POSTGRES_DBNAME}
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    AIRFLOW__CONN_POSTGRES_DEFAULT: 'postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:5432/${POSTGRES_DBNAME}'
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/requirements.txt:/requirements.txt
+    - ./.env:/opt/airflow/.env
+    - ./src:/opt/airflow/dags/src
+  user: "${AIRFLOW_UID:-50000}:${AIRFLOW_GID:-0}"
+  depends_on: &airflow-common-depends-on
+    postgres-airflow:
+      condition: service_healthy
+  networks:
+    - cryptocurrency-ai-anomaly-detector_crypto_network
+
+services:
+
+  postgres-airflow:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    ports:
+      - "5433:5432"
+    networks:
+      - cryptocurrency-ai-anomaly-detector_crypto_network
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    user: "0:0"
+    command:
+      - -c
+      - |
+        # Fix permissions
+        chown -R airflow:root /opt/airflow/logs/
+        chmod -R 755 /opt/airflow/logs/
+        
+        # Switch to airflow user
+        su airflow -c "
+          if [[ -f '/requirements.txt' ]]; then
+            pip install --user --no-cache-dir -r /requirements.txt
+          fi
+          airflow db init
+          airflow users create \
+            --username '${AIRFLOW_USER}' \
+            --firstname 'Admin' \
+            --lastname 'User' \
+            --role Admin \
+            --email '${AIRFLOW_EMAIL}' \
+            --password '${AIRFLOW_PASSWORD}'
+        "
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: "${AIRFLOW_USER}"
+      _AIRFLOW_WWW_USER_PASSWORD: "${AIRFLOW_PASSWORD}"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: |
+      bash -c "
+        if [[ -f '/requirements.txt' ]]; then
+          pip install --user --no-cache-dir -r /requirements.txt
+        fi
+        airflow webserver
+      "
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: |
+      bash -c "
+        if [[ -f '/requirements.txt' ]]; then
+          pip install --user --no-cache-dir -r /requirements.txt
+        fi
+        airflow scheduler
+      "
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: |
+      bash -c "
+        if [[ -f '/requirements.txt' ]]; then
+          pip install --user --no-cache-dir -r /requirements.txt
+        fi
+        airflow triggerer
+      "
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_airflow_data:
+
+networks:
+  cryptocurrency-ai-anomaly-detector_crypto_network:
+    external: true

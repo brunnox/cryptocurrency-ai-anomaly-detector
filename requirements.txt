@@ -28,4 +28,4 @@ python-dotenv==1.0.0
 pyyaml==6.0.1
 
 #Databases
-psycopg==3.2.9
+psycopg[binary]==3.2.9

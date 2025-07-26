@@ -16,7 +16,10 @@ class BucketManager:
             aws_secret_access_key=self.secret_key
         )
 
-        print(f"Connected to MinIO at {self.endpoint_url}")
+        if self.s3_client:
+            print(f"Connected to MinIO at {self.endpoint_url}")
+        else:
+            print("Cannot connect to MinIO")
 
     def bucket_exists(self, bucket_name):
         response = self.s3_client.list_buckets()
@@ -48,14 +51,20 @@ class BucketManager:
     def store_json_file(self, bucket_name, file_path, data):
         try:
             json_data = json.dumps(data, indent=2,  default=str)
+            print(f"JSON conversion successful, size: {len(json_data)} bytes")
 
+            print(f"Uploading to bucket: {bucket_name}, path: {file_path}")
             response = self.s3_client.put_object(
                 Body=json_data,
                 Bucket=bucket_name,
                 Key=file_path
             )
+            print(f"Upload successful! Response: {response.get('ResponseMetadata', {}).get('HTTPStatusCode')}")
             return True
+
         except Exception as e:
+            print(f"Error in store_json_file: {str(e)}")
+            print(f"Error type: {type(e).__name__}")
             return False
 
 
@@ -96,7 +105,11 @@ class BucketManager:
 
     def store_crypto_data(self, bucket_name, crypto_data):
         timestamp_str = crypto_data['collection_metadata']['timestamp']
-        timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+
+        if timestamp_str.endswith('Z'):
+            timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+        else:
+            timestamp = datetime.fromisoformat(timestamp_str)
 
         partition_path = self._generate_partition_path('crypto_prices', timestamp)
         filename = self._generate_filename('crypto_prices', timestamp)
@@ -105,7 +118,9 @@ class BucketManager:
         success = self.store_json_file(bucket_name, full_path, crypto_data)
         
         if success:
-            print(f"✅ Stored crypto data at: {full_path}")
+            print(f"Stored crypto data at: {full_path}")
             return full_path
         else:
+            print(timestamp)
+            print(full_path)
             return None
